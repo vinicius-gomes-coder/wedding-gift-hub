@@ -9,7 +9,7 @@ const MAX_PRICE = Math.ceil(Math.max(...initialGifts.map((g) => g.price)));
 
 const Index = () => {
   const { gifts, selectedCategory } = useStore();
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, MAX_PRICE]);
+  const [priceMax, setPriceMax] = useState<number>(MAX_PRICE);
   const [selectedCategories, setSelectedCategories] = useState<Category[]>([]);
 
   // On refresh, store resets naturally (useState defaults).
