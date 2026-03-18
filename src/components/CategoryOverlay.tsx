@@ -1,16 +1,18 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { useNavigate } from "react-router-dom";
 import { useStore } from "@/contexts/StoreContext";
 import { CATEGORIES } from "@/data/gifts";
 
 export default function CategoryOverlay() {
-  const { showCategories, setShowCategories, setSelectedCategory, selectedCategory } = useStore();
-  const navigate = useNavigate();
+  const {
+    showCategories,
+    setShowCategories,
+    setSelectedCategory,
+    selectedCategory,
+  } = useStore();
 
-  const handleSelect = (cat: typeof CATEGORIES[number] | null) => {
+  const handleSelect = (cat: (typeof CATEGORIES)[number] | null) => {
     setSelectedCategory(cat);
     setShowCategories(false);
-    navigate("/");
   };
 
   return (
@@ -27,7 +29,9 @@ export default function CategoryOverlay() {
             <button
               onClick={() => handleSelect(null)}
               className={`font-display text-3xl md:text-5xl transition-colors duration-500 ${
-                selectedCategory === null ? "text-primary" : "text-foreground hover:text-primary"
+                selectedCategory === null
+                  ? "text-primary"
+                  : "text-foreground hover:text-primary"
               }`}
             >
               Todos os Presentes
@@ -37,7 +41,9 @@ export default function CategoryOverlay() {
                 key={cat}
                 onClick={() => handleSelect(cat)}
                 className={`font-display text-3xl md:text-5xl transition-colors duration-500 ${
-                  selectedCategory === cat ? "text-primary" : "text-foreground hover:text-primary"
+                  selectedCategory === cat
+                    ? "text-primary"
+                    : "text-foreground hover:text-primary"
                 }`}
               >
                 {cat}
