@@ -61,9 +61,9 @@ const Index = () => {
           {/* Sidebar Filters */}
           <div className="w-full md:w-64 shrink-0">
             <GiftFilters
-              priceRange={priceRange}
+              priceMax={priceMax}
               maxPrice={MAX_PRICE}
-              onPriceChange={setPriceRange}
+              onPriceChange={setPriceMax}
               selectedCategories={selectedCategories}
               onCategoryToggle={handleCategoryToggle}
               showCategoryFilter={!selectedCategory}
