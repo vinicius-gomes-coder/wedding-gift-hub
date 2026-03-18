@@ -41,7 +41,7 @@ export default function GiftCard({ gift, index }: GiftCardProps) {
       </p>
       <div className="flex items-center justify-between">
         <span className="font-body text-base font-semibold">
-          R$ {gift.price.toLocaleString("pt-BR")}
+          R$ {gift.price.toFixed(2).replace(".", ",")}
         </span>
         <button
           onClick={handleAdd}
