@@ -34,10 +34,8 @@ const Index = () => {
       result = result.filter((g) => selectedCategories.includes(g.category));
     }
 
-    // Apply price range
-    result = result.filter(
-      (g) => g.price >= priceRange[0] && g.price <= priceRange[1]
-    );
+    // Apply price max (min is fixed at 0)
+    result = result.filter((g) => g.price <= priceMax);
 
     return result;
   }, [gifts, selectedCategory, selectedCategories, priceRange]);
