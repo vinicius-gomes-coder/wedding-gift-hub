@@ -38,7 +38,7 @@ const Index = () => {
     result = result.filter((g) => g.price <= priceMax);
 
     return result;
-  }, [gifts, selectedCategory, selectedCategories, priceRange]);
+  }, [gifts, selectedCategory, selectedCategories, priceMax]);
 
   return (
     <main className="min-h-screen pt-28 pb-20 px-8 md:px-16 lg:px-24">
