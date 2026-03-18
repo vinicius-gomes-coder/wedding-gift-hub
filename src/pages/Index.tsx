@@ -8,7 +8,7 @@ import { initialGifts, type Category } from "@/data/gifts";
 const MAX_PRICE = Math.ceil(Math.max(...initialGifts.map((g) => g.price)));
 
 const Index = () => {
-  const { gifts, selectedCategory, setSelectedCategory } = useStore();
+  const { gifts, selectedCategory } = useStore();
   const [priceRange, setPriceRange] = useState<[number, number]>([0, MAX_PRICE]);
   const [selectedCategories, setSelectedCategories] = useState<Category[]>([]);
 
