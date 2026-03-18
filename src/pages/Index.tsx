@@ -12,12 +12,8 @@ const Index = () => {
   const [priceRange, setPriceRange] = useState<[number, number]>([0, MAX_PRICE]);
   const [selectedCategories, setSelectedCategories] = useState<Category[]>([]);
 
-  // Reset filters on mount (page refresh or navigation)
-  useEffect(() => {
-    setPriceRange([0, MAX_PRICE]);
-    setSelectedCategories([]);
-    setSelectedCategory(null);
-  }, [setSelectedCategory]);
+  // On refresh, store resets naturally (useState defaults).
+  // Local state (priceRange, selectedCategories) also resets on mount.
 
   const handleCategoryToggle = (cat: Category) => {
     setSelectedCategories((prev) =>
