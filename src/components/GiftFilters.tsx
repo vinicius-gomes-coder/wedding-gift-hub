@@ -28,12 +28,12 @@ export default function GiftFilters({
           min={0}
           max={maxPrice}
           step={10}
-          value={priceRange}
-          onValueChange={(v) => onPriceChange(v as [number, number])}
+          value={[priceRange[1]]}
+          onValueChange={(v) => onPriceChange([0, v[0]])}
           className="mb-3"
         />
         <div className="flex justify-between text-sm text-muted-foreground">
-          <span>R$ {priceRange[0].toFixed(2)}</span>
+          <span>R$ 0,00</span>
           <span>R$ {priceRange[1].toFixed(2)}</span>
         </div>
       </div>

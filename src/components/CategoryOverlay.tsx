@@ -1,13 +1,16 @@
 import { motion, AnimatePresence } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 import { useStore } from "@/contexts/StoreContext";
 import { CATEGORIES } from "@/data/gifts";
 
 export default function CategoryOverlay() {
   const { showCategories, setShowCategories, setSelectedCategory, selectedCategory } = useStore();
+  const navigate = useNavigate();
 
   const handleSelect = (cat: typeof CATEGORIES[number] | null) => {
     setSelectedCategory(cat);
     setShowCategories(false);
+    navigate("/");
   };
 
   return (
