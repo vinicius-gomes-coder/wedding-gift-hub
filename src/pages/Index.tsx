@@ -9,7 +9,7 @@ const MAX_PRICE = Math.ceil(Math.max(...initialGifts.map((g) => g.price)));
 
 const Index = () => {
   const { gifts, selectedCategory } = useStore();
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, MAX_PRICE]);
+  const [priceMax, setPriceMax] = useState<number>(MAX_PRICE);
   const [selectedCategories, setSelectedCategories] = useState<Category[]>([]);
 
   // On refresh, store resets naturally (useState defaults).
@@ -34,13 +34,11 @@ const Index = () => {
       result = result.filter((g) => selectedCategories.includes(g.category));
     }
 
-    // Apply price range
-    result = result.filter(
-      (g) => g.price >= priceRange[0] && g.price <= priceRange[1]
-    );
+    // Apply price max (min is fixed at 0)
+    result = result.filter((g) => g.price <= priceMax);
 
     return result;
-  }, [gifts, selectedCategory, selectedCategories, priceRange]);
+  }, [gifts, selectedCategory, selectedCategories, priceMax]);
 
   return (
     <main className="min-h-screen pt-28 pb-20 px-8 md:px-16 lg:px-24">
@@ -63,9 +61,9 @@ const Index = () => {
           {/* Sidebar Filters */}
           <div className="w-full md:w-64 shrink-0">
             <GiftFilters
-              priceRange={priceRange}
+              priceMax={priceMax}
               maxPrice={MAX_PRICE}
-              onPriceChange={setPriceRange}
+              onPriceChange={setPriceMax}
               selectedCategories={selectedCategories}
               onCategoryToggle={handleCategoryToggle}
               showCategoryFilter={!selectedCategory}
@@ -85,7 +83,7 @@ const Index = () => {
             ) : (
               <AnimatePresence mode="wait">
                 <motion.div
-                  key={`${selectedCategory || "all"}-${selectedCategories.join(",")}-${priceRange.join("-")}`}
+                  key={`${selectedCategory || "all"}-${selectedCategories.join(",")}-${priceMax}`}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}

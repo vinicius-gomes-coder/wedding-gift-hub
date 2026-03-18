@@ -3,16 +3,16 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { CATEGORIES, type Category } from "@/data/gifts";
 
 interface GiftFiltersProps {
-  priceRange: [number, number];
+  priceMax: number;
   maxPrice: number;
-  onPriceChange: (value: [number, number]) => void;
+  onPriceChange: (value: number) => void;
   selectedCategories: Category[];
   onCategoryToggle: (cat: Category) => void;
   showCategoryFilter?: boolean;
 }
 
 export default function GiftFilters({
-  priceRange,
+  priceMax,
   maxPrice,
   onPriceChange,
   selectedCategories,
@@ -28,13 +28,13 @@ export default function GiftFilters({
           min={0}
           max={maxPrice}
           step={10}
-          value={[priceRange[1]]}
-          onValueChange={(v) => onPriceChange([0, v[0]])}
+          value={[priceMax]}
+          onValueChange={(v) => onPriceChange(v[0] ?? maxPrice)}
           className="mb-3"
         />
         <div className="flex justify-between text-sm text-muted-foreground">
           <span>R$ 0,00</span>
-          <span>R$ {priceRange[1].toFixed(2)}</span>
+          <span>R$ {priceMax.toFixed(2)}</span>
         </div>
       </div>
 
