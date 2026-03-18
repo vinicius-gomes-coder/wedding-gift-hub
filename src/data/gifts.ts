@@ -20,6 +20,10 @@ import kitfacas from "@/assets/kit-facas.jpeg";
 import kitpanelasceramica from "@/assets/kit-panelas-ceramica.jpeg";
 import geladeira from "@/assets/geladeira.jpeg";
 import roboaspirador from "@/assets/robo-aspirador.jpeg";
+import panelapressao from "@/assets/panela-pressao.png";
+import capamaquina from "@/assets/capa-maquina.jpeg";
+import varal from "@/assets/varal-chao.jpeg";
+import batedeira from "@/assets/batedeira.jpeg";
 
 export type Category = "Casa" | "Eletrônicos & Eletrodomésticos" | "Cozinha" | "Quarto & Banho" | "Ferramentas";
 
@@ -211,5 +215,36 @@ export const initialGifts: Gift[] = [
     category: "Eletrônicos & Eletrodomésticos",
     image: roboaspirador,
   },
-  
+  {
+    id: "23",
+    name: "Panela de Pressão Ceramica",
+    description: "Panela de pressão revestida em cerâmica para cozinha.",
+    price: 239.90 ,
+    category: "Cozinha",
+    image: panelapressao,
+  },
+  {
+    id: "24",
+    name: "Capa para Maquina de Lavar",
+    description: "Capa impermeável com zíper, para máquina de lavar em tecido resistente.",
+    price: 39.90 ,
+    category: "Casa",
+    image: capamaquina,
+  },
+  {
+    id: "25",
+    name: "Varal de Chão Dobrável",
+    description: "Varal de chão dobrável para uso doméstico.",
+    price: 99.90 ,
+    category: "Casa",
+    image: varal,
+  },
+  {
+    id: "26",
+    name: "Batedeira",
+    description: "Batedeira elétrica, 3 velocidades.",
+    price: 89.90 ,
+    category: "Eletrônicos & Eletrodomésticos",
+    image: batedeira,
+  },
 ];
