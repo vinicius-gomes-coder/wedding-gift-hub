@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useStore } from "@/contexts/StoreContext";
 import GiftCard from "@/components/GiftCard";
 import GiftFilters from "@/components/GiftFilters";
