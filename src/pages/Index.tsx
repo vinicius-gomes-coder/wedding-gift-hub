@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useStore } from "@/contexts/StoreContext";
 import GiftCard from "@/components/GiftCard";
 import GiftFilters from "@/components/GiftFilters";
@@ -8,16 +8,12 @@ import { initialGifts, type Category } from "@/data/gifts";
 const MAX_PRICE = Math.ceil(Math.max(...initialGifts.map((g) => g.price)));
 
 const Index = () => {
-  const { gifts, selectedCategory, setSelectedCategory } = useStore();
+  const { gifts, selectedCategory } = useStore();
   const [priceRange, setPriceRange] = useState<[number, number]>([0, MAX_PRICE]);
   const [selectedCategories, setSelectedCategories] = useState<Category[]>([]);
 
-  // Reset filters on mount (page refresh or navigation)
-  useEffect(() => {
-    setPriceRange([0, MAX_PRICE]);
-    setSelectedCategories([]);
-    setSelectedCategory(null);
-  }, [setSelectedCategory]);
+  // On refresh, store resets naturally (useState defaults).
+  // Local state (priceRange, selectedCategories) also resets on mount.
 
   const handleCategoryToggle = (cat: Category) => {
     setSelectedCategories((prev) =>
