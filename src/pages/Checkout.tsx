@@ -1,17 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useStore } from "@/contexts/StoreContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-
-function generatePixCode(amount: number): string {
-  const chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  let code = "";
-  for (let i = 0; i < 32; i++) code += chars[Math.floor(Math.random() * chars.length)];
-  return `00020126580014BR.GOV.BCB.PIX0136${code}5204000053039865802BR5913CASAMENTO6014SAO PAULO62070503***6304${amount}`;
-}
+import { QRCodeSVG } from "qrcode.react";
 
 type PaymentMethod = "pix" | "card";
+
+const PIX_EXPIRATION_SECONDS = 10 * 60; // 10 minutes
 
 export default function Checkout() {
   const { cart, cartTotal, completePurchase } = useStore();
@@ -22,7 +18,13 @@ export default function Checkout() {
 
   // PIX state
   const [pixCode, setPixCode] = useState("");
-  const [seconds, setSeconds] = useState(0);
+  const [pixQrCodeBase64, setPixQrCodeBase64] = useState("");
+  const [pixPaymentId, setPixPaymentId] = useState<number | null>(null);
+  const [pixLoading, setPixLoading] = useState(false);
+  const [pixError, setPixError] = useState("");
+  const [pixExpired, setPixExpired] = useState(false);
+  const [remainingSeconds, setRemainingSeconds] = useState(PIX_EXPIRATION_SECONDS);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Card state
   const [cardName, setCardName] = useState("");
@@ -39,25 +41,85 @@ export default function Checkout() {
     }
   }, [cart, confirmed, navigate]);
 
-  useEffect(() => {
-    setPixCode(generatePixCode(cartTotal));
-  }, [cartTotal]);
+  // Create PIX payment when method is selected
+  const createPixPayment = useCallback(async () => {
+    setPixLoading(true);
+    setPixError("");
+    setPixExpired(false);
+    setRemainingSeconds(PIX_EXPIRATION_SECONDS);
+
+    try {
+      const { data, error } = await supabase.functions.invoke("create-pix-payment", {
+        body: {
+          amount: cartTotal,
+          items: cart.map((item) => ({
+            title: item.gift.name,
+            unit_price: item.gift.price,
+            quantity: 1,
+          })),
+        },
+      });
+
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+
+      setPixCode(data.qr_code || "");
+      setPixQrCodeBase64(data.qr_code_base64 || "");
+      setPixPaymentId(data.payment_id);
+    } catch (err: any) {
+      setPixError(err.message || "Erro ao gerar pagamento PIX. Tente novamente.");
+    } finally {
+      setPixLoading(false);
+    }
+  }, [cartTotal, cart]);
 
   useEffect(() => {
-    if (confirmed || method !== "pix") return;
-    const interval = setInterval(() => setSeconds((s) => s + 1), 1000);
+    if (method === "pix" && !confirmed) {
+      createPixPayment();
+    }
+  }, [method, confirmed, createPixPayment]);
+
+  // Countdown timer
+  useEffect(() => {
+    if (method !== "pix" || confirmed || pixExpired || !pixPaymentId) return;
+    const interval = setInterval(() => {
+      setRemainingSeconds((prev) => {
+        if (prev <= 1) {
+          setPixExpired(true);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
     return () => clearInterval(interval);
-  }, [confirmed, method]);
+  }, [method, confirmed, pixExpired, pixPaymentId]);
 
-  // Auto-confirm PIX payment after 10 seconds
+  // Poll payment status every 5 seconds
   useEffect(() => {
-    if (confirmed || method !== "pix") return;
-    const timeout = setTimeout(() => {
-      setConfirmed(true);
-      completePurchase();
-    }, 10000);
-    return () => clearTimeout(timeout);
-  }, [confirmed, method, completePurchase]);
+    if (!pixPaymentId || confirmed || pixExpired || method !== "pix") return;
+
+    pollingRef.current = setInterval(async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("check-payment-status", {
+          body: { payment_id: pixPaymentId },
+        });
+
+        if (error) return;
+
+        if (data?.status === "approved") {
+          setConfirmed(true);
+          completePurchase();
+          if (pollingRef.current) clearInterval(pollingRef.current);
+        }
+      } catch {
+        // silently retry
+      }
+    }, 5000);
+
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, [pixPaymentId, confirmed, pixExpired, method, completePurchase]);
 
   const handleCardSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,6 +172,10 @@ export default function Checkout() {
     const digits = value.replace(/\D/g, "").slice(0, 4);
     if (digits.length >= 3) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
     return digits;
+  };
+
+  const handleCopyPix = () => {
+    navigator.clipboard.writeText(pixCode);
   };
 
   const maxInstallments = Math.min(12, Math.floor(cartTotal / 50) || 1);
@@ -179,42 +245,82 @@ export default function Checkout() {
               ← Voltar
             </button>
 
-            <div className="w-64 h-64 border-2 border-foreground p-4 mb-8">
-              <div className="w-full h-full bg-foreground/5 flex items-center justify-center">
-                <div className="grid grid-cols-8 grid-rows-8 gap-[2px] w-48 h-48">
-                  {Array.from({ length: 64 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className={`${Math.random() > 0.45 ? "bg-foreground" : "bg-transparent"}`}
-                    />
-                  ))}
+            {pixLoading ? (
+              <div className="flex flex-col items-center gap-4">
+                <div className="w-64 h-64 border-2 border-border flex items-center justify-center">
+                  <p className="font-body text-sm text-muted-foreground animate-pulse">
+                    Gerando QR Code...
+                  </p>
                 </div>
               </div>
-            </div>
-
-            <h2 className="font-display text-2xl md:text-3xl mb-4">Aguardando o gesto.</h2>
-
-            <p className="font-body text-sm text-muted-foreground mb-2">
-              R$ {cartTotal.toLocaleString("pt-BR")}
-            </p>
-
-            <p className="font-body text-xs text-muted-foreground mb-8">
-              {formatTime(seconds)}
-            </p>
-
-            <div className="w-full mb-6">
-              <p className="font-body text-xs text-muted-foreground mb-2">Código Pix Copia e Cola:</p>
-              <div
-                className="font-body text-xs bg-secondary p-3 break-all cursor-pointer select-all border border-border"
-                onClick={() => navigator.clipboard.writeText(pixCode)}
-              >
-                {pixCode}
+            ) : pixError ? (
+              <div className="flex flex-col items-center gap-4">
+                <p className="font-body text-sm text-destructive">{pixError}</p>
+                <button
+                  onClick={createPixPayment}
+                  className="font-body text-sm border border-foreground text-foreground px-6 py-3 hover:bg-foreground hover:text-background transition-all duration-500"
+                >
+                  Tentar novamente
+                </button>
               </div>
-            </div>
+            ) : pixExpired ? (
+              <div className="flex flex-col items-center gap-4">
+                <h2 className="font-display text-2xl md:text-3xl mb-2">Código expirado</h2>
+                <p className="font-body text-sm text-muted-foreground">
+                  O código PIX expirou após 10 minutos.
+                </p>
+                <button
+                  onClick={createPixPayment}
+                  className="font-body text-sm border border-foreground text-foreground px-6 py-3 hover:bg-foreground hover:text-background transition-all duration-500"
+                >
+                  Gerar novo código
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="w-64 h-64 border-2 border-foreground p-4 mb-8 bg-white flex items-center justify-center">
+                  {pixQrCodeBase64 ? (
+                    <img
+                      src={`data:image/png;base64,${pixQrCodeBase64}`}
+                      alt="QR Code PIX"
+                      className="w-full h-full object-contain"
+                    />
+                  ) : pixCode ? (
+                    <QRCodeSVG value={pixCode} size={224} />
+                  ) : null}
+                </div>
 
-            <p className="font-body text-xs text-muted-foreground animate-pulse">
-              Aguardando confirmação automática do pagamento...
-            </p>
+                <h2 className="font-display text-2xl md:text-3xl mb-4">Aguardando o gesto.</h2>
+
+                <p className="font-body text-sm text-muted-foreground mb-2">
+                  R$ {cartTotal.toLocaleString("pt-BR")}
+                </p>
+
+                <p className={`font-body text-xs mb-8 ${remainingSeconds <= 60 ? "text-destructive" : "text-muted-foreground"}`}>
+                  Expira em {formatTime(remainingSeconds)}
+                </p>
+
+                <div className="w-full mb-6">
+                  <p className="font-body text-xs text-muted-foreground mb-2">Código Pix Copia e Cola:</p>
+                  <div
+                    className="font-body text-xs bg-secondary p-3 break-all cursor-pointer select-all border border-border"
+                    onClick={handleCopyPix}
+                  >
+                    {pixCode}
+                  </div>
+                  <button
+                    onClick={handleCopyPix}
+                    className="font-body text-xs text-muted-foreground mt-2 hover:text-foreground transition-colors"
+                  >
+                    Copiar código
+                  </button>
+                </div>
+
+                <p className="font-body text-xs text-muted-foreground animate-pulse">
+                  Aguardando confirmação do pagamento...
+                </p>
+              </>
+            )}
           </motion.div>
         ) : (
           <motion.div
