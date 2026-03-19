@@ -49,10 +49,15 @@ export default function Checkout() {
     return () => clearInterval(interval);
   }, [confirmed, method]);
 
-  const handlePixConfirm = () => {
-    setConfirmed(true);
-    completePurchase();
-  };
+  // Auto-confirm PIX payment after 10 seconds
+  useEffect(() => {
+    if (confirmed || method !== "pix") return;
+    const timeout = setTimeout(() => {
+      setConfirmed(true);
+      completePurchase();
+    }, 10000);
+    return () => clearTimeout(timeout);
+  }, [confirmed, method, completePurchase]);
 
   const handleCardSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
