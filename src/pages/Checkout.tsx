@@ -49,10 +49,15 @@ export default function Checkout() {
     return () => clearInterval(interval);
   }, [confirmed, method]);
 
-  const handlePixConfirm = () => {
-    setConfirmed(true);
-    completePurchase();
-  };
+  // Auto-confirm PIX payment after 10 seconds
+  useEffect(() => {
+    if (confirmed || method !== "pix") return;
+    const timeout = setTimeout(() => {
+      setConfirmed(true);
+      completePurchase();
+    }, 10000);
+    return () => clearTimeout(timeout);
+  }, [confirmed, method, completePurchase]);
 
   const handleCardSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -207,12 +212,9 @@ export default function Checkout() {
               </div>
             </div>
 
-            <button
-              onClick={handlePixConfirm}
-              className="font-body text-sm border border-primary text-primary px-6 py-3 hover:bg-primary hover:text-primary-foreground transition-all duration-500"
-            >
-              Simular confirmação do pagamento
-            </button>
+            <p className="font-body text-xs text-muted-foreground animate-pulse">
+              Aguardando confirmação automática do pagamento...
+            </p>
           </motion.div>
         ) : (
           <motion.div
