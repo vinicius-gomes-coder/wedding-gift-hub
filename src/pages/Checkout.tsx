@@ -212,12 +212,9 @@ export default function Checkout() {
               </div>
             </div>
 
-            <button
-              onClick={handlePixConfirm}
-              className="font-body text-sm border border-primary text-primary px-6 py-3 hover:bg-primary hover:text-primary-foreground transition-all duration-500"
-            >
-              Simular confirmação do pagamento
-            </button>
+            <p className="font-body text-xs text-muted-foreground animate-pulse">
+              Aguardando confirmação automática do pagamento...
+            </p>
           </motion.div>
         ) : (
           <motion.div
