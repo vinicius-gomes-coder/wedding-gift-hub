@@ -7,6 +7,9 @@ import CategoryOverlay from "@/components/CategoryOverlay";
 import Index from "./pages/Index";
 import Cart from "./pages/Cart";
 import Checkout from "./pages/Checkout";
+import PaymentSuccess from "./pages/PaymentSuccess";
+import PaymentFailure from "./pages/PaymentFailure";
+import PaymentPending from "./pages/PaymentPending";
 import NotFound from "./pages/NotFound";
 
 const App = () => (
@@ -20,6 +23,12 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/carrinho" element={<Cart />} />
           <Route path="/checkout" element={<Checkout />} />
+
+          {/* Rotas de retorno do Checkout Pro */}
+          <Route path="/pagamento/sucesso" element={<PaymentSuccess />} />
+          <Route path="/pagamento/erro" element={<PaymentFailure />} />
+          <Route path="/pagamento/pendente" element={<PaymentPending />} />
+
           <Route path="*" element={<NotFound />} />
         </Routes>
       </TooltipProvider>

@@ -2,86 +2,136 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useStore } from "@/contexts/StoreContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { Wallet } from "@mercadopago/sdk-react";
 import { QRCodeSVG } from "qrcode.react";
 
-type PaymentMethod = "pix" | "card";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+const PIX_EXPIRATION_SECONDS = 10 * 60;
 
-const PIX_EXPIRATION_SECONDS = 10 * 60; // 10 minutes
+type Step =
+  | "summary" // resumo do carrinho
+  | "method" // escolha: PIX ou Cartão
+  | "loading" // aguardando resposta do backend
+  | "pix" // QR code PIX
+  | "wallet" // Wallet Brick (cartão/Checkout Pro)
+  | "error"; // erro genérico
+
+type PaymentMethod = "pix" | "card";
 
 export default function Checkout() {
   const { cart, cartTotal, completePurchase } = useStore();
   const navigate = useNavigate();
 
+  const [step, setStep] = useState<Step>("summary");
   const [method, setMethod] = useState<PaymentMethod | null>(null);
-  const [confirmed, setConfirmed] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
-  // PIX state
+  // Estado Checkout Pro (cartão)
+  const [preferenceId, setPreferenceId] = useState<string | null>(null);
+
+  // Estado PIX
   const [pixCode, setPixCode] = useState("");
   const [pixQrCodeBase64, setPixQrCodeBase64] = useState("");
   const [pixPaymentId, setPixPaymentId] = useState<number | null>(null);
-  const [pixLoading, setPixLoading] = useState(false);
-  const [pixError, setPixError] = useState("");
   const [pixExpired, setPixExpired] = useState(false);
-  const [remainingSeconds, setRemainingSeconds] = useState(PIX_EXPIRATION_SECONDS);
+  const [remainingSeconds, setRemainingSeconds] = useState(
+    PIX_EXPIRATION_SECONDS,
+  );
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Card state
-  const [cardName, setCardName] = useState("");
-  const [cardNumber, setCardNumber] = useState("");
-  const [cardExpiry, setCardExpiry] = useState("");
-  const [cardCvv, setCardCvv] = useState("");
-  const [installments, setInstallments] = useState(1);
-  const [cardProcessing, setCardProcessing] = useState(false);
-  const [cardError, setCardError] = useState("");
-
+  // Redireciona se carrinho vazio
   useEffect(() => {
-    if (cart.length === 0 && !confirmed) {
-      navigate("/");
-    }
-  }, [cart, confirmed, navigate]);
+    if (cart.length === 0) navigate("/");
+  }, [cart, navigate]);
 
-  // Create PIX payment when method is selected
+  // Limpa polling ao desmontar
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, []);
+
+  // ── Selecionar método e chamar o backend ──────────────────────────────────
+  const handleSelectMethod = async (selected: PaymentMethod) => {
+    setMethod(selected);
+    setStep("loading");
+    setErrorMessage("");
+
+    if (selected === "card") {
+      await createPreference();
+    } else {
+      await createPixPayment();
+    }
+  };
+
+  // ── Checkout Pro (cartão) ─────────────────────────────────────────────────
+  const createPreference = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/payments/preference`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: cart.map((item) => ({
+            title: item.gift.name,
+            unit_price: item.gift.price,
+            quantity: 1,
+          })),
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok)
+        throw new Error(data.error || "Erro ao iniciar pagamento");
+
+      setPreferenceId(data.preference_id);
+      setStep("wallet");
+    } catch (err: unknown) {
+      setErrorMessage(
+        err instanceof Error ? err.message : "Erro ao conectar com o servidor.",
+      );
+      setStep("error");
+    }
+  };
+
+  // ── PIX ───────────────────────────────────────────────────────────────────
   const createPixPayment = useCallback(async () => {
-    setPixLoading(true);
-    setPixError("");
     setPixExpired(false);
     setRemainingSeconds(PIX_EXPIRATION_SECONDS);
+    if (pollingRef.current) clearInterval(pollingRef.current);
 
     try {
-      const { data, error } = await supabase.functions.invoke("create-pix-payment", {
-        body: {
+      const response = await fetch(`${API_BASE_URL}/api/payments/pix`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           amount: cartTotal,
           items: cart.map((item) => ({
             title: item.gift.name,
             unit_price: item.gift.price,
             quantity: 1,
           })),
-        },
+        }),
       });
 
-      if (error) throw new Error(error.message);
-      if (data?.error) throw new Error(data.error);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Erro ao gerar PIX");
 
       setPixCode(data.qr_code || "");
       setPixQrCodeBase64(data.qr_code_base64 || "");
       setPixPaymentId(data.payment_id);
-    } catch (err: any) {
-      setPixError(err.message || "Erro ao gerar pagamento PIX. Tente novamente.");
-    } finally {
-      setPixLoading(false);
+      setStep("pix");
+    } catch (err: unknown) {
+      setErrorMessage(
+        err instanceof Error ? err.message : "Erro ao gerar pagamento PIX.",
+      );
+      setStep("error");
     }
-  }, [cartTotal, cart]);
+  }, [cart, cartTotal]);
 
+  // Contador regressivo do PIX
   useEffect(() => {
-    if (method === "pix" && !confirmed) {
-      createPixPayment();
-    }
-  }, [method, confirmed, createPixPayment]);
+    if (step !== "pix" || pixExpired || !pixPaymentId) return;
 
-  // Countdown timer
-  useEffect(() => {
-    if (method !== "pix" || confirmed || pixExpired || !pixPaymentId) return;
     const interval = setInterval(() => {
       setRemainingSeconds((prev) => {
         if (prev <= 1) {
@@ -91,353 +141,412 @@ export default function Checkout() {
         return prev - 1;
       });
     }, 1000);
-    return () => clearInterval(interval);
-  }, [method, confirmed, pixExpired, pixPaymentId]);
 
-  // Poll payment status every 5 seconds
+    return () => clearInterval(interval);
+  }, [step, pixExpired, pixPaymentId]);
+
+  // Polling de status do PIX a cada 5 segundos
   useEffect(() => {
-    if (!pixPaymentId || confirmed || pixExpired || method !== "pix") return;
+    if (step !== "pix" || !pixPaymentId || pixExpired) return;
 
     pollingRef.current = setInterval(async () => {
       try {
-        const { data, error } = await supabase.functions.invoke("check-payment-status", {
-          body: { payment_id: pixPaymentId },
-        });
+        const response = await fetch(
+          `${API_BASE_URL}/api/payments/status/${pixPaymentId}`,
+        );
+        if (!response.ok) return;
 
-        if (error) return;
+        const data = await response.json();
 
-        if (data?.status === "approved") {
-          setConfirmed(true);
+        if (data.status === "approved") {
+          clearInterval(pollingRef.current!);
           completePurchase();
-          if (pollingRef.current) clearInterval(pollingRef.current);
+          navigate("/pagamento/sucesso");
         }
       } catch {
-        // silently retry
+        // Silencia erros de rede e tenta novamente
       }
     }, 5000);
 
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current);
     };
-  }, [pixPaymentId, confirmed, pixExpired, method, completePurchase]);
+  }, [step, pixPaymentId, pixExpired, completePurchase, navigate]);
 
-  const handleCardSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCardError("");
-    setCardProcessing(true);
-
-    try {
-      const { data, error } = await supabase.functions.invoke("process-payment", {
-        body: {
-          amount: cartTotal,
-          installments,
-          card: {
-            holderName: cardName,
-            number: cardNumber.replace(/\s/g, ""),
-            expiry: cardExpiry,
-            cvv: cardCvv,
-          },
-          items: cart.map((item) => ({
-            title: item.gift.name,
-            unit_price: item.gift.price,
-            quantity: 1,
-          })),
-        },
-      });
-
-      if (error) throw new Error(error.message);
-      if (data?.error) throw new Error(data.error);
-
-      setConfirmed(true);
-      completePurchase();
-    } catch (err: any) {
-      setCardError(err.message || "Erro ao processar pagamento. Tente novamente.");
-    } finally {
-      setCardProcessing(false);
-    }
-  };
-
+  // ── Helpers ───────────────────────────────────────────────────────────────
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
     const sec = s % 60;
     return `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
   };
 
-  const formatCardNumber = (value: string) => {
-    const digits = value.replace(/\D/g, "").slice(0, 16);
-    return digits.replace(/(\d{4})(?=\d)/g, "$1 ");
-  };
-
-  const formatExpiry = (value: string) => {
-    const digits = value.replace(/\D/g, "").slice(0, 4);
-    if (digits.length >= 3) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-    return digits;
-  };
-
   const handleCopyPix = () => {
     navigator.clipboard.writeText(pixCode);
   };
 
-  const maxInstallments = Math.min(12, Math.floor(cartTotal / 50) || 1);
-  const installmentOptions = Array.from({ length: maxInstallments }, (_, i) => i + 1);
+  const handleBack = () => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    setStep("method");
+    setMethod(null);
+    setPixCode("");
+    setPixQrCodeBase64("");
+    setPixPaymentId(null);
+    setPreferenceId(null);
+    setPixExpired(false);
+    setRemainingSeconds(PIX_EXPIRATION_SECONDS);
+  };
 
-  if (cart.length === 0 && !confirmed) return null;
+  if (cart.length === 0) return null;
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <main className="min-h-screen flex items-center justify-center px-8 py-24">
-      <AnimatePresence mode="wait">
-        {confirmed ? (
-          <motion.div
-            key="thanks"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 1.2, ease: "easeOut" }}
-            className="flex flex-col items-center text-center"
-          >
-            <h2 className="font-display text-3xl md:text-5xl text-accent leading-relaxed">
-              Obrigado por fazer parte
-              <br />
-              da nossa história.
-            </h2>
-          </motion.div>
-        ) : !method ? (
-          <motion.div
-            key="select"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.6 }}
-            className="flex flex-col items-center text-center max-w-md w-full"
-          >
-            <h2 className="font-display text-2xl md:text-3xl mb-2">Como deseja presentear?</h2>
-            <p className="font-body text-sm text-muted-foreground mb-10">
-              R$ {cartTotal.toLocaleString("pt-BR")}
-            </p>
+    <main className="min-h-screen pt-28 pb-20 px-8 md:px-16 lg:px-24">
+      <div className="max-w-2xl mx-auto">
+        <motion.h1
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.8 }}
+          className="font-display text-4xl md:text-5xl mb-16"
+        >
+          Finalizar Compra
+        </motion.h1>
 
-            <div className="flex flex-col gap-4 w-full max-w-xs">
-              <button
-                onClick={() => setMethod("pix")}
-                className="font-body text-sm border border-foreground text-foreground px-6 py-4 hover:bg-foreground hover:text-background transition-all duration-500"
-              >
-                Pix
-              </button>
-              <button
-                onClick={() => setMethod("card")}
-                className="font-body text-sm border border-foreground text-foreground px-6 py-4 hover:bg-foreground hover:text-background transition-all duration-500"
-              >
-                Cartão de Crédito
-              </button>
-            </div>
-          </motion.div>
-        ) : method === "pix" ? (
-          <motion.div
-            key="pix"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.8 }}
-            className="flex flex-col items-center text-center max-w-md"
-          >
-            <button
-              onClick={() => setMethod(null)}
-              className="font-body text-xs text-muted-foreground mb-8 hover:text-foreground transition-colors self-start"
+        <AnimatePresence mode="wait">
+          {/* ── 1. Resumo do pedido ── */}
+          {step === "summary" && (
+            <motion.div
+              key="summary"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.6 }}
             >
-              ← Voltar
-            </button>
-
-            {pixLoading ? (
-              <div className="flex flex-col items-center gap-4">
-                <div className="w-64 h-64 border-2 border-border flex items-center justify-center">
-                  <p className="font-body text-sm text-muted-foreground animate-pulse">
-                    Gerando QR Code...
-                  </p>
-                </div>
-              </div>
-            ) : pixError ? (
-              <div className="flex flex-col items-center gap-4">
-                <p className="font-body text-sm text-destructive">{pixError}</p>
-                <button
-                  onClick={createPixPayment}
-                  className="font-body text-sm border border-foreground text-foreground px-6 py-3 hover:bg-foreground hover:text-background transition-all duration-500"
-                >
-                  Tentar novamente
-                </button>
-              </div>
-            ) : pixExpired ? (
-              <div className="flex flex-col items-center gap-4">
-                <h2 className="font-display text-2xl md:text-3xl mb-2">Código expirado</h2>
-                <p className="font-body text-sm text-muted-foreground">
-                  O código PIX expirou após 10 minutos.
-                </p>
-                <button
-                  onClick={createPixPayment}
-                  className="font-body text-sm border border-foreground text-foreground px-6 py-3 hover:bg-foreground hover:text-background transition-all duration-500"
-                >
-                  Gerar novo código
-                </button>
-              </div>
-            ) : (
-              <>
-                <div className="w-64 h-64 border-2 border-foreground p-4 mb-8 bg-white flex items-center justify-center">
-                  {pixQrCodeBase64 ? (
-                    <img
-                      src={`data:image/png;base64,${pixQrCodeBase64}`}
-                      alt="QR Code PIX"
-                      className="w-full h-full object-contain"
-                    />
-                  ) : pixCode ? (
-                    <QRCodeSVG value={pixCode} size={224} />
-                  ) : null}
-                </div>
-
-                <h2 className="font-display text-2xl md:text-3xl mb-4">Aguardando o gesto.</h2>
-
-                <p className="font-body text-sm text-muted-foreground mb-2">
-                  R$ {cartTotal.toLocaleString("pt-BR")}
-                </p>
-
-                <p className={`font-body text-xs mb-8 ${remainingSeconds <= 60 ? "text-destructive" : "text-muted-foreground"}`}>
-                  Expira em {formatTime(remainingSeconds)}
-                </p>
-
-                <div className="w-full mb-6">
-                  <p className="font-body text-xs text-muted-foreground mb-2">Código Pix Copia e Cola:</p>
+              <div className="mb-10">
+                {cart.map((item) => (
                   <div
-                    className="font-body text-xs bg-secondary p-3 break-all cursor-pointer select-all border border-border"
-                    onClick={handleCopyPix}
+                    key={item.gift.id}
+                    className="flex items-center gap-5 py-5 border-b border-border"
                   >
-                    {pixCode}
+                    <div className="w-16 h-16 flex-shrink-0 border border-border overflow-hidden">
+                      <img
+                        src={item.gift.image}
+                        alt={item.gift.name}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-display text-lg leading-tight">
+                        {item.gift.name}
+                      </p>
+                      <p className="font-body text-sm text-muted-foreground mt-0.5">
+                        {item.gift.category}
+                      </p>
+                    </div>
+                    <span className="font-body text-sm font-medium flex-shrink-0">
+                      R${" "}
+                      {item.gift.price.toLocaleString("pt-BR", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between mb-12">
+                <span className="font-display text-xl text-muted-foreground">
+                  Total
+                </span>
+                <span className="font-display text-2xl">
+                  R${" "}
+                  {cartTotal.toLocaleString("pt-BR", {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center gap-4">
+                <button
+                  onClick={() => navigate("/carrinho")}
+                  className="font-body text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  ← Voltar ao carrinho
+                </button>
+                <button
+                  onClick={() => setStep("method")}
+                  className="font-body text-sm bg-primary text-primary-foreground px-10 py-3.5 hover:opacity-90 transition-opacity duration-500 ml-auto"
+                >
+                  Ir para o pagamento
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ── 2. Escolha do método ── */}
+          {step === "method" && (
+            <motion.div
+              key="method"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.6 }}
+            >
+              {/* Total compacto */}
+              <div className="flex items-center justify-between mb-12 pb-6 border-b border-border">
+                <span className="font-display text-lg text-muted-foreground">
+                  {cart.length} {cart.length === 1 ? "presente" : "presentes"}
+                </span>
+                <span className="font-display text-2xl">
+                  R${" "}
+                  {cartTotal.toLocaleString("pt-BR", {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
+              </div>
+
+              <h2 className="font-display text-2xl mb-8">
+                Como deseja presentear?
+              </h2>
+
+              <div className="flex flex-col gap-4 max-w-sm">
+                {/* PIX */}
+                <button
+                  onClick={() => handleSelectMethod("pix")}
+                  className="group flex items-center gap-4 border border-border px-6 py-5 hover:border-foreground transition-all duration-500 text-left"
+                >
+                  <div className="w-10 h-10 flex-shrink-0 flex items-center justify-center border border-border group-hover:border-foreground transition-colors duration-500">
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                    >
+                      <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                      <path d="M2 17l10 5 10-5" />
+                      <path d="M2 12l10 5 10-5" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="font-display text-lg">PIX</p>
+                    <p className="font-body text-xs text-muted-foreground">
+                      Pagamento instantâneo
+                    </p>
+                  </div>
+                </button>
+
+                {/* Cartão */}
+                <button
+                  onClick={() => handleSelectMethod("card")}
+                  className="group flex items-center gap-4 border border-border px-6 py-5 hover:border-foreground transition-all duration-500 text-left"
+                >
+                  <div className="w-10 h-10 flex-shrink-0 flex items-center justify-center border border-border group-hover:border-foreground transition-colors duration-500">
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                    >
+                      <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+                      <line x1="1" y1="10" x2="23" y2="10" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="font-display text-lg">Cartão de Crédito</p>
+                    <p className="font-body text-xs text-muted-foreground">
+                      Via Mercado Pago — em até 12x
+                    </p>
+                  </div>
+                </button>
+              </div>
+
+              <button
+                onClick={() => setStep("summary")}
+                className="font-body text-xs text-muted-foreground hover:text-foreground transition-colors mt-8 block"
+              >
+                ← Voltar ao resumo
+              </button>
+            </motion.div>
+          )}
+
+          {/* ── 3. Carregando ── */}
+          {step === "loading" && (
+            <motion.div
+              key="loading"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex flex-col items-center py-24 gap-4"
+            >
+              <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              <p className="font-body text-sm text-muted-foreground">
+                {method === "pix"
+                  ? "Gerando código PIX..."
+                  : "Preparando o pagamento..."}
+              </p>
+            </motion.div>
+          )}
+
+          {/* ── 4. PIX ── */}
+          {step === "pix" && (
+            <motion.div
+              key="pix"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+              className="flex flex-col items-center"
+            >
+              {pixExpired ? (
+                /* PIX expirado */
+                <div className="flex flex-col items-center gap-6 py-12 text-center">
+                  <h2 className="font-display text-2xl">Código expirado.</h2>
+                  <p className="font-body text-sm text-muted-foreground">
+                    O código PIX expirou após 10 minutos.
+                  </p>
+                  <button
+                    onClick={createPixPayment}
+                    className="font-body text-sm border border-foreground text-foreground px-8 py-3 hover:bg-foreground hover:text-background transition-all duration-500"
+                  >
+                    Gerar novo código
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* Cabeçalho compacto */}
+                  <div className="flex items-center justify-between w-full mb-8 pb-5 border-b border-border">
+                    <span className="font-display text-lg text-muted-foreground">
+                      PIX
+                    </span>
+                    <span className="font-display text-2xl">
+                      R${" "}
+                      {cartTotal.toLocaleString("pt-BR", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+
+                  {/* QR Code */}
+                  <div className="w-56 h-56 border-2 border-foreground p-3 mb-6 bg-white flex items-center justify-center">
+                    {pixQrCodeBase64 ? (
+                      <img
+                        src={`data:image/png;base64,${pixQrCodeBase64}`}
+                        alt="QR Code PIX"
+                        className="w-full h-full object-contain"
+                      />
+                    ) : pixCode ? (
+                      <QRCodeSVG value={pixCode} size={200} />
+                    ) : null}
+                  </div>
+
+                  {/* Contador */}
+                  <p
+                    className={`font-body text-xs mb-6 tabular-nums ${
+                      remainingSeconds <= 60
+                        ? "text-destructive"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    Expira em {formatTime(remainingSeconds)}
+                  </p>
+
+                  {/* Código copia-e-cola */}
+                  <div className="w-full max-w-sm mb-2">
+                    <p className="font-body text-xs text-muted-foreground mb-2">
+                      Pix Copia e Cola
+                    </p>
+                    <div
+                      onClick={handleCopyPix}
+                      className="font-body text-xs bg-secondary border border-border p-3 break-all cursor-pointer select-all leading-relaxed"
+                    >
+                      {pixCode}
+                    </div>
                   </div>
                   <button
                     onClick={handleCopyPix}
-                    className="font-body text-xs text-muted-foreground mt-2 hover:text-foreground transition-colors"
+                    className="font-body text-xs text-muted-foreground hover:text-foreground transition-colors mb-8"
                   >
                     Copiar código
                   </button>
-                </div>
 
-                <p className="font-body text-xs text-muted-foreground animate-pulse">
-                  Aguardando confirmação do pagamento...
-                </p>
-              </>
-            )}
-          </motion.div>
-        ) : (
-          <motion.div
-            key="card"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.8 }}
-            className="flex flex-col items-center max-w-md w-full"
-          >
-            <button
-              onClick={() => setMethod(null)}
-              className="font-body text-xs text-muted-foreground mb-8 hover:text-foreground transition-colors self-start"
-            >
-              ← Voltar
-            </button>
-
-            <h2 className="font-display text-2xl md:text-3xl mb-2 text-center">Cartão de Crédito</h2>
-            <p className="font-body text-sm text-muted-foreground mb-8 text-center">
-              R$ {cartTotal.toLocaleString("pt-BR")}
-            </p>
-
-            <form onSubmit={handleCardSubmit} className="w-full space-y-5">
-              <div>
-                <label className="font-body text-xs text-muted-foreground block mb-1.5">
-                  Nome no cartão
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={cardName}
-                  onChange={(e) => setCardName(e.target.value)}
-                  className="w-full font-body text-sm border border-border bg-transparent px-4 py-3 focus:outline-none focus:border-foreground transition-colors"
-                  placeholder="Como aparece no cartão"
-                />
-              </div>
-
-              <div>
-                <label className="font-body text-xs text-muted-foreground block mb-1.5">
-                  Número do cartão
-                </label>
-                <input
-                  type="text"
-                  required
-                  inputMode="numeric"
-                  value={cardNumber}
-                  onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
-                  className="w-full font-body text-sm border border-border bg-transparent px-4 py-3 focus:outline-none focus:border-foreground transition-colors"
-                  placeholder="0000 0000 0000 0000"
-                />
-              </div>
-
-              <div className="flex gap-4">
-                <div className="flex-1">
-                  <label className="font-body text-xs text-muted-foreground block mb-1.5">
-                    Validade
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    inputMode="numeric"
-                    value={cardExpiry}
-                    onChange={(e) => setCardExpiry(formatExpiry(e.target.value))}
-                    className="w-full font-body text-sm border border-border bg-transparent px-4 py-3 focus:outline-none focus:border-foreground transition-colors"
-                    placeholder="MM/AA"
-                  />
-                </div>
-                <div className="flex-1">
-                  <label className="font-body text-xs text-muted-foreground block mb-1.5">
-                    CVV
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    inputMode="numeric"
-                    maxLength={4}
-                    value={cardCvv}
-                    onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                    className="w-full font-body text-sm border border-border bg-transparent px-4 py-3 focus:outline-none focus:border-foreground transition-colors"
-                    placeholder="000"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="font-body text-xs text-muted-foreground block mb-1.5">
-                  Parcelas
-                </label>
-                <select
-                  value={installments}
-                  onChange={(e) => setInstallments(Number(e.target.value))}
-                  className="w-full font-body text-sm border border-border bg-transparent px-4 py-3 focus:outline-none focus:border-foreground transition-colors appearance-none"
-                >
-                  {installmentOptions.map((n) => (
-                    <option key={n} value={n}>
-                      {n}x de R$ {(cartTotal / n).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                      {n === 1 ? " (à vista)" : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {cardError && (
-                <p className="font-body text-xs text-destructive">{cardError}</p>
+                  {/* Status */}
+                  <p className="font-body text-xs text-muted-foreground animate-pulse mb-8">
+                    Aguardando confirmação do pagamento...
+                  </p>
+                </>
               )}
 
               <button
-                type="submit"
-                disabled={cardProcessing}
-                className="w-full font-body text-sm border border-foreground text-foreground px-6 py-4 hover:bg-foreground hover:text-background transition-all duration-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleBack}
+                className="font-body text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
-                {cardProcessing ? "Processando..." : "Pagar"}
+                ← Voltar
               </button>
-            </form>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </motion.div>
+          )}
+
+          {/* ── 5. Wallet Brick (cartão) ── */}
+          {step === "wallet" && preferenceId && (
+            <motion.div
+              key="wallet"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+            >
+              <div className="flex items-center justify-between mb-8 pb-5 border-b border-border">
+                <span className="font-display text-lg text-muted-foreground">
+                  {cart.length} {cart.length === 1 ? "presente" : "presentes"}
+                </span>
+                <span className="font-display text-2xl">
+                  R${" "}
+                  {cartTotal.toLocaleString("pt-BR", {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
+              </div>
+
+              <p className="font-body text-sm text-muted-foreground mb-6">
+                Clique no botão abaixo para concluir o pagamento com segurança
+                pelo Mercado Pago.
+              </p>
+
+              <Wallet initialization={{ preferenceId }} />
+
+              <button
+                onClick={handleBack}
+                className="font-body text-xs text-muted-foreground hover:text-foreground transition-colors mt-6 block"
+              >
+                ← Voltar
+              </button>
+            </motion.div>
+          )}
+
+          {/* ── 6. Erro ── */}
+          {step === "error" && (
+            <motion.div
+              key="error"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex flex-col items-center py-20 gap-6 text-center"
+            >
+              <p className="font-display text-2xl text-destructive">
+                Ops, algo deu errado.
+              </p>
+              <p className="font-body text-sm text-muted-foreground max-w-sm">
+                {errorMessage}
+              </p>
+              <button
+                onClick={handleBack}
+                className="font-body text-sm border border-foreground text-foreground px-8 py-3 hover:bg-foreground hover:text-background transition-all duration-500"
+              >
+                Tentar novamente
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </main>
   );
 }

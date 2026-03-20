@@ -40,6 +40,14 @@ export const CATEGORIES: Category[] = ["Casa", "Eletrônicos & Eletrodomésticos
 
 export const initialGifts: Gift[] = [
   {
+    id: "0",
+    name: "Presente Teste",
+    description: "Presente de teste",
+    price: 1,
+    category: "Cozinha",
+    image: jogojantar1,
+  },
+  {
     id: "1",
     name: "Jogo de Jantar ",
     description: "Conjunto completo com 30 peças em porcelana branca.",
