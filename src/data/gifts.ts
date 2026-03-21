@@ -43,6 +43,39 @@ import panelapressao    from "@/assets/panela-pressao.png";
 import capamaquina      from "@/assets/capa-maquina.jpeg";
 import varal            from "@/assets/varal-chao.jpeg";
 import batedeira        from "@/assets/batedeira.jpeg";
+import jogotoalhas      from "@/assets/jogo-toalhas.jpeg";
+import coberdrom        from "@/assets/coberdrom.jpeg";
+import espelho          from "@/assets/espelho.jpeg";
+import spraydesamassar  from "@/assets/spray-desamassar.jpeg";
+import escorredor       from "@/assets/escorredor.jpeg";
+import grill            from "@/assets/grill.jpeg";
+import portaazeite      from "@/assets/porta-azeite.jpeg";
+import tapetebanheiro   from "@/assets/tapete-banheiro.jpeg";
+import suporteovos      from "@/assets/suporte-ovos.jpeg";
+import toalhasbanho     from "@/assets/toalhas-banho.jpeg";
+import aparelhojantar   from "@/assets/aparelho-jantar.jpeg";
+import organizadoresgeladeira    from "@/assets/organizadores-geladeira.jpeg";
+import chaleiraeletrica from "@/assets/chaleira-eletrica.jpeg";
+import lixeirainteligente from "@/assets/lixeira-inteligente.jpeg";
+import portapao         from "@/assets/porta-pao.jpeg";
+import boleira          from "@/assets/boleira.jpeg";
+import mantaqueen       from "@/assets/manta-queen.jpeg";
+import varalchaoandar   from "@/assets/varal-chao-andar.jpeg";
+import cacarola         from "@/assets/cacarola.jpeg";
+import hermetico3       from "@/assets/potes-hermeticos-3.jpeg";
+import edredomqeen      from "@/assets/edredom-queen.jpeg";
+import tabuacorte       from "@/assets/tabua-corte.jpeg";
+import tacasvidro       from "@/assets/tacas-vidro.jpeg";
+import dispenser        from "@/assets/dispenser-lavanderia.jpeg";
+import impressora       from "@/assets/impressora-etiqueta.jpeg";
+import hermeticos4      from "@/assets/potes-hermeticos-4.jpeg";
+import tacassobremesa   from "@/assets/tacas-sobremesa.jpeg";
+import travessavidro    from "@/assets/travessa-vidro.jpeg";
+import tapetezigzag     from "@/assets/tapete-zigzag.jpeg";
+import organizadores    from "@/assets/organizadores.jpeg";
+import raqueteeletrica  from "@/assets/raquete-eletrica.jpeg";
+import panelaarrozeletrica from "@/assets/panela-arroz-eletrica.jpeg";
+import tabuapassar      from "@/assets/tabua-passar-roupa.jpeg";
 
 // Mapa: nome do arquivo (igual ao salvo no banco) → URL resolvida pelo Vite
 export const IMAGE_MAP: Record<string, string> = {
@@ -72,6 +105,39 @@ export const IMAGE_MAP: Record<string, string> = {
   "capa-maquina.jpeg":          capamaquina,
   "varal-chao.jpeg":            varal,
   "batedeira.jpeg":             batedeira,
+  "jogo-toalhas.jpeg":          jogotoalhas,
+  "coberdrom.jpeg":             coberdrom,
+  "espelho.jpeg":               espelho,
+  "spray-desamassar.jpeg":      spraydesamassar,
+  "escorredor.jpeg":            escorredor,
+  "grill.jpeg":                 grill,
+  "porta-azeite.jpeg":          portaazeite,
+  "tapete-banheiro.jpeg":       tapetebanheiro,
+  "suporte-ovos.jpeg":          suporteovos,
+  "toalhas-banho.jpeg":         toalhasbanho,
+  "aparelho-jantar.jpeg":       aparelhojantar,
+  "organizadores-geladeira.jpeg": organizadoresgeladeira,
+  "chaleira-eletrica.jpeg":      chaleiraeletrica,
+  "lixeira-inteligente.jpeg":   lixeirainteligente,
+  "porta-pao.jpeg":             portapao,
+  "boleira.jpeg":              boleira,
+  "manta-queen.jpeg":          mantaqueen,
+  "varal-chao-andar.jpeg":      varalchaoandar,
+  "cacarola.jpeg":             cacarola,
+  "potes-hermeticos-3.jpeg":    hermetico3,
+  "edredom-queen.jpeg":        edredomqeen,
+  "tabua-corte.jpeg":          tabuacorte,
+  "tacas-vidro.jpeg":          tacasvidro,
+  "dispenser-lavanderia.jpeg":   dispenser,
+  "impressora-etiqueta.jpeg":    impressora,
+  "potes-hermeticos-4.jpeg":    hermeticos4,
+  "tacas-sobremesa.jpeg":      tacassobremesa,
+  "travessa-vidro.jpeg":       travessavidro,
+  "tapete-zigzag.jpeg":        tapetezigzag,
+  "organizadores.jpeg":        organizadores,
+  "raquete-eletrica.jpeg":     raqueteeletrica,
+  "panela-arroz-eletrica.jpeg": panelaarrozeletrica,
+  "tabua-passar-roupa.jpeg":         tabuapassar
 };
 
 // Retorna a URL do asset a partir do nome do arquivo salvo no banco.
