@@ -37,9 +37,35 @@ interface GiftRow {
   description: string;
   price: number;
   category: string;
-  image: string; // nome do arquivo, ex: "jogo-jantar-1.jpeg"
+  image: string;
   available: boolean;
   sort_order: number;
+}
+
+const CART_STORAGE_KEY = "wedding_cart";
+
+function saveCart(cart: CartItem[]) {
+  // Salva apenas os dados necessários (sem a URL da imagem que muda por build)
+  const toSave = cart.map((item) => ({
+    id: item.gift.id,
+    name: item.gift.name,
+    description: item.gift.description,
+    price: item.gift.price,
+    category: item.gift.category,
+    image: item.gift.image,
+  }));
+  sessionStorage.setItem(CART_STORAGE_KEY, JSON.stringify(toSave));
+}
+
+function loadCart(): CartItem[] {
+  try {
+    const raw = sessionStorage.getItem(CART_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Gift[];
+    return parsed.map((gift) => ({ gift }));
+  } catch {
+    return [];
+  }
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -48,7 +74,7 @@ const StoreContext = createContext<StoreContextType | null>(null);
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [gifts, setGifts] = useState<Gift[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartItem[]>(loadCart); // restaura do sessionStorage
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(
     null,
   );
@@ -65,7 +91,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const { data, error: sbError } = await supabase
         .from("gifts")
         .select("*")
-        .eq("available", true) // traz apenas os disponíveis
+        .eq("available", true)
         .order("sort_order", { ascending: true });
 
       if (sbError) {
@@ -77,7 +103,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       const rows = (data ?? []) as GiftRow[];
 
-      // Converte cada row: resolve o filename do banco para a URL do asset local
       const mappedGifts: Gift[] = rows.map((row) => ({
         id: row.id,
         name: row.name,
@@ -87,13 +112,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         image: resolveImage(row.image),
       }));
 
-      // Categorias únicas na ordem em que aparecem (mantém a ordenação do banco)
       const uniqueCategories: Category[] = [];
       for (const g of mappedGifts) {
         if (!uniqueCategories.includes(g.category)) {
           uniqueCategories.push(g.category);
         }
       }
+
+      // Reconcilia o carrinho restaurado com os dados frescos do banco:
+      // atualiza a URL da imagem (pode mudar entre builds) e remove itens
+      // que entre o redirecionamento já foram comprados por outra pessoa.
+      const availableIds = new Set(mappedGifts.map((g) => g.id));
+      setCart((prevCart) => {
+        const reconciledCart = prevCart
+          .filter((item) => availableIds.has(item.gift.id))
+          .map((item) => {
+            const fresh = mappedGifts.find((g) => g.id === item.gift.id);
+            return fresh ? { gift: fresh } : item;
+          });
+        saveCart(reconciledCart);
+        return reconciledCart;
+      });
 
       setGifts(mappedGifts);
       setCategories(uniqueCategories);
@@ -102,6 +141,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     fetchGifts();
   }, []);
+
+  // ── Persiste o carrinho no sessionStorage a cada mudança ──────────────────
+  useEffect(() => {
+    saveCart(cart);
+  }, [cart]);
 
   // ── Ações do carrinho ─────────────────────────────────────────────────────
   const addToCart = useCallback((gift: Gift) => {
@@ -115,15 +159,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setCart((prev) => prev.filter((item) => item.gift.id !== giftId));
   }, []);
 
-  // ── Confirma compra: remove do estado local + marca como unavailable no banco
+  // ── Confirma compra ───────────────────────────────────────────────────────
   const completePurchase = useCallback(async () => {
     const purchasedIds = cart.map((item) => item.gift.id);
 
-    // Otimista: atualiza UI imediatamente
     setGifts((prev) => prev.filter((g) => !purchasedIds.includes(g.id)));
     setCart([]);
+    sessionStorage.removeItem(CART_STORAGE_KEY);
 
-    // Persiste no banco (best-effort — não bloqueia o usuário se falhar)
     const { error: sbError } = await supabase
       .from("gifts")
       .update({ available: false })
@@ -131,7 +174,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     if (sbError) {
       console.error(
-        "Aviso: não foi possível marcar os presentes como comprados no banco:",
+        "Aviso: não foi possível marcar presentes como comprados:",
         sbError.message,
       );
     }
