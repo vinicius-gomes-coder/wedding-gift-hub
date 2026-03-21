@@ -43,7 +43,7 @@ export const initialGifts: Gift[] = [
     id: "0",
     name: "Presente Teste",
     description: "Presente de teste",
-    price: 1,
+    price: 0.01,
     category: "Cozinha",
     image: jogojantar1,
   },

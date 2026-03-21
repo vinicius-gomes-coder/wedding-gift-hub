@@ -1,15 +1,16 @@
 import { Router } from "express";
 import { MercadoPagoConfig, Preference, Payment } from "mercadopago";
+import { sendPurchaseEmails } from "../services/email.js";
 
 const router = Router();
 
-// Inicializa o SDK do Mercado Pago com o Access Token (conforme documentação)
+// Inicializa o SDK do Mercado Pago com o Access Token
 const client = new MercadoPagoConfig({
   accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN,
 });
 
 // ─── POST /api/payments/preference ───────────────────────────────────────────
-// Cria preferência para Checkout Pro (cartão, débito, etc.)
+// Cria preferência para Checkout Pro (cartão)
 router.post("/preference", async (req, res) => {
   try {
     const { items, payer_email } = req.body;
@@ -27,9 +28,6 @@ router.post("/preference", async (req, res) => {
     }
 
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:8080";
-
-    // auto_return só funciona com URLs públicas.
-    // O MercadoPago rejeita a preferência quando back_urls.success é localhost.
     const isLocalhost =
       frontendUrl.includes("localhost") || frontendUrl.includes("127.0.0.1");
 
@@ -44,20 +42,15 @@ router.post("/preference", async (req, res) => {
           unit_price: Number(item.unit_price),
           currency_id: "BRL",
         })),
-
         payer: {
           email: payer_email || "convidado@casamento.com",
         },
-
         back_urls: {
           success: `${frontendUrl}/pagamento/sucesso`,
           failure: `${frontendUrl}/pagamento/erro`,
           pending: `${frontendUrl}/pagamento/pendente`,
         },
-
-        // Redireciona automaticamente quando aprovado — apenas em produção
         ...(!isLocalhost && { auto_return: "approved" }),
-
         external_reference: `wedding-gift-${Date.now()}`,
       },
     });
@@ -72,9 +65,7 @@ router.post("/preference", async (req, res) => {
   } catch (err) {
     console.error("Erro ao criar preferência:", err);
     const message =
-      err?.cause?.message ||
-      err?.message ||
-      "Erro ao criar preferência de pagamento. Tente novamente.";
+      err?.cause?.message || err?.message || "Erro ao criar preferência de pagamento.";
     return res.status(500).json({ error: message });
   }
 });
@@ -97,9 +88,7 @@ router.post("/pix", async (req, res) => {
       });
     }
 
-    // PIX expira em 10 minutos
     const expirationDate = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-
     const payment = new Payment(client);
 
     const result = await payment.create({
@@ -120,13 +109,10 @@ router.post("/pix", async (req, res) => {
           })),
         },
       },
-      requestOptions: {
-        idempotencyKey: crypto.randomUUID(),
-      },
+      requestOptions: { idempotencyKey: crypto.randomUUID() },
     });
 
     const transactionData = result.point_of_interaction?.transaction_data;
-
     console.log(`✅  PIX criado: ${result.id} | status: ${result.status}`);
 
     return res.status(201).json({
@@ -139,9 +125,7 @@ router.post("/pix", async (req, res) => {
   } catch (err) {
     console.error("Erro ao criar pagamento PIX:", err);
     const message =
-      err?.cause?.message ||
-      err?.message ||
-      "Erro ao gerar pagamento PIX. Tente novamente.";
+      err?.cause?.message || err?.message || "Erro ao gerar pagamento PIX.";
     return res.status(500).json({ error: message });
   }
 });
@@ -166,10 +150,39 @@ router.get("/status/:paymentId", async (req, res) => {
   } catch (err) {
     console.error("Erro ao consultar status:", err);
     const message =
-      err?.cause?.message ||
-      err?.message ||
-      "Erro ao verificar status do pagamento.";
+      err?.cause?.message || err?.message || "Erro ao verificar status do pagamento.";
     return res.status(500).json({ error: message });
+  }
+});
+
+// ─── POST /api/payments/notify ────────────────────────────────────────────────
+// Chamado pelo frontend após confirmação do pagamento.
+// Envia e-mail para os noivos e para o comprador.
+router.post("/notify", async (req, res) => {
+  try {
+    const { buyer, items, total, paymentMethod } = req.body;
+
+    // Validações básicas
+    if (!buyer?.name || !buyer?.email) {
+      return res.status(400).json({ error: "Nome e e-mail do comprador são obrigatórios" });
+    }
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: "Lista de itens é obrigatória" });
+    }
+
+    if (!total) {
+      return res.status(400).json({ error: "Total é obrigatório" });
+    }
+
+    await sendPurchaseEmails({ buyer, items, total, paymentMethod });
+
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    // Loga o erro mas não falha a experiência do usuário —
+    // o pagamento já foi confirmado, o e-mail é secundário.
+    console.error("Erro ao enviar e-mails:", err.message);
+    return res.status(500).json({ error: err.message });
   }
 });
 

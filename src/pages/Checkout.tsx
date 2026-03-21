@@ -10,6 +10,7 @@ const PIX_EXPIRATION_SECONDS = 10 * 60;
 
 type Step =
   | "summary" // resumo do carrinho
+  | "buyer" // nome, e-mail e mensagem
   | "method" // escolha: PIX ou Cartão
   | "loading" // aguardando resposta do backend
   | "pix" // QR code PIX
@@ -18,6 +19,16 @@ type Step =
 
 type PaymentMethod = "pix" | "card";
 
+interface BuyerInfo {
+  name: string;
+  email: string;
+  message: string;
+}
+
+// Chave usada para persistir dados do comprador entre o redirect do cartão
+const BUYER_SESSION_KEY = "wedding_buyer_info";
+const CART_SESSION_KEY = "wedding_cart_snapshot";
+
 export default function Checkout() {
   const { cart, cartTotal, completePurchase } = useStore();
   const navigate = useNavigate();
@@ -25,6 +36,14 @@ export default function Checkout() {
   const [step, setStep] = useState<Step>("summary");
   const [method, setMethod] = useState<PaymentMethod | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
+
+  // Dados do comprador
+  const [buyer, setBuyer] = useState<BuyerInfo>({
+    name: "",
+    email: "",
+    message: "",
+  });
+  const [buyerErrors, setBuyerErrors] = useState<Partial<BuyerInfo>>({});
 
   // Estado Checkout Pro (cartão)
   const [preferenceId, setPreferenceId] = useState<string | null>(null);
@@ -51,6 +70,41 @@ export default function Checkout() {
     };
   }, []);
 
+  // ── Validação do formulário de comprador ──────────────────────────────────
+  const validateBuyer = (): boolean => {
+    const errors: Partial<BuyerInfo> = {};
+
+    if (!buyer.name.trim()) errors.name = "Informe seu nome";
+
+    if (!buyer.email.trim()) {
+      errors.email = "Informe seu e-mail";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyer.email)) {
+      errors.email = "E-mail inválido";
+    }
+
+    setBuyerErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleBuyerContinue = () => {
+    if (!validateBuyer()) return;
+
+    // Persiste no sessionStorage para sobreviver ao redirect do cartão
+    sessionStorage.setItem(BUYER_SESSION_KEY, JSON.stringify(buyer));
+    sessionStorage.setItem(
+      CART_SESSION_KEY,
+      JSON.stringify(
+        cart.map((item) => ({
+          title: item.gift.name,
+          unit_price: item.gift.price,
+          quantity: 1,
+        })),
+      ),
+    );
+
+    setStep("method");
+  };
+
   // ── Selecionar método e chamar o backend ──────────────────────────────────
   const handleSelectMethod = async (selected: PaymentMethod) => {
     setMethod(selected);
@@ -71,6 +125,7 @@ export default function Checkout() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          payer_email: buyer.email,
           items: cart.map((item) => ({
             title: item.gift.name,
             unit_price: item.gift.price,
@@ -105,6 +160,7 @@ export default function Checkout() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           amount: cartTotal,
+          payer_email: buyer.email,
           items: cart.map((item) => ({
             title: item.gift.name,
             unit_price: item.gift.price,
@@ -126,7 +182,33 @@ export default function Checkout() {
       );
       setStep("error");
     }
-  }, [cart, cartTotal]);
+  }, [cart, cartTotal, buyer.email]);
+
+  // ── Notificar backend → dispara e-mails ───────────────────────────────────
+  const sendNotification = useCallback(
+    async (paymentMethod: PaymentMethod, buyerData: BuyerInfo) => {
+      try {
+        await fetch(`${API_BASE_URL}/api/payments/notify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            buyer: buyerData,
+            items: cart.map((item) => ({
+              title: item.gift.name,
+              unit_price: item.gift.price,
+              quantity: 1,
+            })),
+            total: cartTotal,
+            paymentMethod,
+          }),
+        });
+      } catch {
+        // E-mail falhou mas pagamento foi confirmado — não bloqueia o fluxo
+        console.warn("Falha ao enviar notificação de e-mail.");
+      }
+    },
+    [cart, cartTotal],
+  );
 
   // Contador regressivo do PIX
   useEffect(() => {
@@ -160,6 +242,7 @@ export default function Checkout() {
 
         if (data.status === "approved") {
           clearInterval(pollingRef.current!);
+          await sendNotification("pix", buyer);
           completePurchase();
           navigate("/pagamento/sucesso");
         }
@@ -171,7 +254,15 @@ export default function Checkout() {
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current);
     };
-  }, [step, pixPaymentId, pixExpired, completePurchase, navigate]);
+  }, [
+    step,
+    pixPaymentId,
+    pixExpired,
+    completePurchase,
+    navigate,
+    sendNotification,
+    buyer,
+  ]);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const formatTime = (s: number) => {
@@ -272,8 +363,107 @@ export default function Checkout() {
                   ← Voltar ao carrinho
                 </button>
                 <button
-                  onClick={() => setStep("method")}
+                  onClick={() => setStep("buyer")}
                   className="font-body text-sm bg-primary text-primary-foreground px-10 py-3.5 hover:opacity-90 transition-opacity duration-500 ml-auto"
+                >
+                  Continuar
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ── 2. Dados do comprador ── */}
+          {step === "buyer" && (
+            <motion.div
+              key="buyer"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.6 }}
+            >
+              <h2 className="font-display text-2xl mb-2">
+                Quem está presenteando?
+              </h2>
+              <p className="font-body text-sm text-muted-foreground mb-10">
+                Seus dados serão usados para confirmar a compra e enviar uma
+                mensagem aos noivos.
+              </p>
+
+              <div className="flex flex-col gap-6 max-w-sm">
+                {/* Nome */}
+                <div>
+                  <label className="font-body text-xs text-muted-foreground block mb-1.5 tracking-widest uppercase">
+                    Nome completo *
+                  </label>
+                  <input
+                    type="text"
+                    value={buyer.name}
+                    onChange={(e) =>
+                      setBuyer((b) => ({ ...b, name: e.target.value }))
+                    }
+                    placeholder="Seu nome"
+                    className={`w-full font-body text-sm border bg-transparent px-4 py-3 outline-none focus:border-foreground transition-colors duration-300 placeholder:text-muted-foreground/50 ${
+                      buyerErrors.name ? "border-destructive" : "border-border"
+                    }`}
+                  />
+                  {buyerErrors.name && (
+                    <p className="font-body text-xs text-destructive mt-1">
+                      {buyerErrors.name}
+                    </p>
+                  )}
+                </div>
+
+                {/* E-mail */}
+                <div>
+                  <label className="font-body text-xs text-muted-foreground block mb-1.5 tracking-widest uppercase">
+                    E-mail *
+                  </label>
+                  <input
+                    type="email"
+                    value={buyer.email}
+                    onChange={(e) =>
+                      setBuyer((b) => ({ ...b, email: e.target.value }))
+                    }
+                    placeholder="seu@email.com"
+                    className={`w-full font-body text-sm border bg-transparent px-4 py-3 outline-none focus:border-foreground transition-colors duration-300 placeholder:text-muted-foreground/50 ${
+                      buyerErrors.email ? "border-destructive" : "border-border"
+                    }`}
+                  />
+                  {buyerErrors.email && (
+                    <p className="font-body text-xs text-destructive mt-1">
+                      {buyerErrors.email}
+                    </p>
+                  )}
+                </div>
+
+                {/* Mensagem */}
+                <div>
+                  <label className="font-body text-xs text-muted-foreground block mb-1.5 tracking-widest uppercase">
+                    Mensagem para os noivos{" "}
+                    <span className="normal-case">(opcional)</span>
+                  </label>
+                  <textarea
+                    value={buyer.message}
+                    onChange={(e) =>
+                      setBuyer((b) => ({ ...b, message: e.target.value }))
+                    }
+                    placeholder="Escreva uma mensagem especial para Eduarda e Vinicius..."
+                    rows={4}
+                    className="w-full font-body text-sm border border-border bg-transparent px-4 py-3 outline-none focus:border-foreground transition-colors duration-300 placeholder:text-muted-foreground/50 resize-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center gap-4 mt-10">
+                <button
+                  onClick={() => setStep("summary")}
+                  className="font-body text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  ← Voltar ao resumo
+                </button>
+                <button
+                  onClick={handleBuyerContinue}
+                  className="font-body text-sm bg-primary text-primary-foreground px-10 py-3.5 hover:opacity-90 transition-opacity duration-500 sm:ml-auto"
                 >
                   Ir para o pagamento
                 </button>
@@ -281,7 +471,7 @@ export default function Checkout() {
             </motion.div>
           )}
 
-          {/* ── 2. Escolha do método ── */}
+          {/* ── 3. Escolha do método ── */}
           {step === "method" && (
             <motion.div
               key="method"
@@ -290,7 +480,6 @@ export default function Checkout() {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.6 }}
             >
-              {/* Total compacto */}
               <div className="flex items-center justify-between mb-12 pb-6 border-b border-border">
                 <span className="font-display text-lg text-muted-foreground">
                   {cart.length} {cart.length === 1 ? "presente" : "presentes"}
@@ -308,7 +497,6 @@ export default function Checkout() {
               </h2>
 
               <div className="flex flex-col gap-4 max-w-sm">
-                {/* PIX */}
                 <button
                   onClick={() => handleSelectMethod("pix")}
                   className="group flex items-center gap-4 border border-border px-6 py-5 hover:border-foreground transition-all duration-500 text-left"
@@ -335,7 +523,6 @@ export default function Checkout() {
                   </div>
                 </button>
 
-                {/* Cartão */}
                 <button
                   onClick={() => handleSelectMethod("card")}
                   className="group flex items-center gap-4 border border-border px-6 py-5 hover:border-foreground transition-all duration-500 text-left"
@@ -363,15 +550,15 @@ export default function Checkout() {
               </div>
 
               <button
-                onClick={() => setStep("summary")}
+                onClick={() => setStep("buyer")}
                 className="font-body text-xs text-muted-foreground hover:text-foreground transition-colors mt-8 block"
               >
-                ← Voltar ao resumo
+                ← Voltar
               </button>
             </motion.div>
           )}
 
-          {/* ── 3. Carregando ── */}
+          {/* ── 4. Carregando ── */}
           {step === "loading" && (
             <motion.div
               key="loading"
@@ -389,7 +576,7 @@ export default function Checkout() {
             </motion.div>
           )}
 
-          {/* ── 4. PIX ── */}
+          {/* ── 5. PIX ── */}
           {step === "pix" && (
             <motion.div
               key="pix"
@@ -399,7 +586,6 @@ export default function Checkout() {
               className="flex flex-col items-center"
             >
               {pixExpired ? (
-                /* PIX expirado */
                 <div className="flex flex-col items-center gap-6 py-12 text-center">
                   <h2 className="font-display text-2xl">Código expirado.</h2>
                   <p className="font-body text-sm text-muted-foreground">
@@ -414,7 +600,6 @@ export default function Checkout() {
                 </div>
               ) : (
                 <>
-                  {/* Cabeçalho compacto */}
                   <div className="flex items-center justify-between w-full mb-8 pb-5 border-b border-border">
                     <span className="font-display text-lg text-muted-foreground">
                       PIX
@@ -427,7 +612,6 @@ export default function Checkout() {
                     </span>
                   </div>
 
-                  {/* QR Code */}
                   <div className="w-56 h-56 border-2 border-foreground p-3 mb-6 bg-white flex items-center justify-center">
                     {pixQrCodeBase64 ? (
                       <img
@@ -440,7 +624,6 @@ export default function Checkout() {
                     ) : null}
                   </div>
 
-                  {/* Contador */}
                   <p
                     className={`font-body text-xs mb-6 tabular-nums ${
                       remainingSeconds <= 60
@@ -451,7 +634,6 @@ export default function Checkout() {
                     Expira em {formatTime(remainingSeconds)}
                   </p>
 
-                  {/* Código copia-e-cola */}
                   <div className="w-full max-w-sm mb-2">
                     <p className="font-body text-xs text-muted-foreground mb-2">
                       Pix Copia e Cola
@@ -470,7 +652,6 @@ export default function Checkout() {
                     Copiar código
                   </button>
 
-                  {/* Status */}
                   <p className="font-body text-xs text-muted-foreground animate-pulse mb-8">
                     Aguardando confirmação do pagamento...
                   </p>
@@ -486,7 +667,7 @@ export default function Checkout() {
             </motion.div>
           )}
 
-          {/* ── 5. Wallet Brick (cartão) ── */}
+          {/* ── 6. Wallet Brick (cartão) ── */}
           {step === "wallet" && preferenceId && (
             <motion.div
               key="wallet"
@@ -522,7 +703,7 @@ export default function Checkout() {
             </motion.div>
           )}
 
-          {/* ── 6. Erro ── */}
+          {/* ── 7. Erro ── */}
           {step === "error" && (
             <motion.div
               key="error"
