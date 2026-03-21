@@ -7,7 +7,7 @@ import CategoryOverlay from "@/components/CategoryOverlay";
 import Index from "./pages/Index";
 import Cart from "./pages/Cart";
 import Checkout from "./pages/Checkout";
-import CustomPix from "./pages/CustomPix";
+import CustomPix from "./pages/Custompix";
 import PaymentSuccess from "./pages/PaymentSuccess";
 import PaymentFailure from "./pages/PaymentFailure";
 import PaymentPending from "./pages/PaymentPending";
