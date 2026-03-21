@@ -1,18 +1,26 @@
 import { motion, AnimatePresence } from "framer-motion";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useStore } from "@/contexts/StoreContext";
-import { CATEGORIES } from "@/data/gifts";
 
 export default function CategoryOverlay() {
   const {
+    categories,
     showCategories,
     setShowCategories,
     setSelectedCategory,
     selectedCategory,
   } = useStore();
 
-  const handleSelect = (cat: (typeof CATEGORIES)[number] | null) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const handleSelect = (cat: string | null) => {
     setSelectedCategory(cat);
     setShowCategories(false);
+    // Se não estiver na página inicial, redireciona para lá com a categoria selecionada
+    if (location.pathname !== "/") {
+      navigate("/");
+    }
   };
 
   return (
@@ -23,7 +31,8 @@ export default function CategoryOverlay() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.6 }}
-          className="fixed inset-0 z-40 bg-background flex flex-col items-center justify-center"
+          className="fixed inset-0 z-40
+          pt-24 bg-background flex flex-col items-center justify-center"
         >
           <div className="flex flex-col items-center gap-8">
             <button
@@ -36,7 +45,7 @@ export default function CategoryOverlay() {
             >
               Todos os Presentes
             </button>
-            {CATEGORIES.map((cat) => (
+            {categories.map((cat) => (
               <button
                 key={cat}
                 onClick={() => handleSelect(cat)}

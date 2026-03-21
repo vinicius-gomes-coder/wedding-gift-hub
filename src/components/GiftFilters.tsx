@@ -1,8 +1,9 @@
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
-import { CATEGORIES, type Category } from "@/data/gifts";
+import type { Category } from "@/data/gifts";
 
 interface GiftFiltersProps {
+  categories: Category[]; // recebido do Index (que pega do useStore)
   priceMax: number;
   maxPrice: number;
   onPriceChange: (value: number) => void;
@@ -12,6 +13,7 @@ interface GiftFiltersProps {
 }
 
 export default function GiftFilters({
+  categories,
   priceMax,
   maxPrice,
   onPriceChange,
@@ -21,7 +23,7 @@ export default function GiftFilters({
 }: GiftFiltersProps) {
   return (
     <aside className="space-y-8 font-body">
-      {/* Price Filter */}
+      {/* Filtro de preço */}
       <div>
         <h3 className="font-display text-lg mb-4">Faixa de Preço</h3>
         <Slider
@@ -38,13 +40,16 @@ export default function GiftFilters({
         </div>
       </div>
 
-      {/* Category Filter */}
+      {/* Filtro de categorias */}
       {showCategoryFilter && (
         <div>
           <h3 className="font-display text-lg mb-4">Categorias</h3>
           <div className="space-y-3">
-            {CATEGORIES.map((cat) => (
-              <label key={cat} className="flex items-center gap-3 cursor-pointer">
+            {categories.map((cat) => (
+              <label
+                key={cat}
+                className="flex items-center gap-3 cursor-pointer"
+              >
                 <Checkbox
                   checked={selectedCategories.includes(cat)}
                   onCheckedChange={() => onCategoryToggle(cat)}

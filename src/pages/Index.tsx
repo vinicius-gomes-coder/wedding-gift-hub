@@ -3,43 +3,82 @@ import { useStore } from "@/contexts/StoreContext";
 import GiftCard from "@/components/GiftCard";
 import GiftFilters from "@/components/GiftFilters";
 import { motion, AnimatePresence } from "framer-motion";
-import { initialGifts, type Category } from "@/data/gifts";
-
-const MAX_PRICE = Math.ceil(Math.max(...initialGifts.map((g) => g.price)));
+import type { Category } from "@/data/gifts";
 
 const Index = () => {
-  const { gifts, selectedCategory } = useStore();
-  const [priceMax, setPriceMax] = useState<number>(MAX_PRICE);
+  const { gifts, categories, selectedCategory, loading, error } = useStore();
+
+  // MAX_PRICE derivado dos gifts do banco (recalcula quando gifts muda)
+  const maxPrice = useMemo(
+    () =>
+      gifts.length > 0
+        ? Math.ceil(Math.max(...gifts.map((g) => g.price)))
+        : 1000,
+    [gifts],
+  );
+
+  const [priceMax, setPriceMax] = useState<number | null>(null);
   const [selectedCategories, setSelectedCategories] = useState<Category[]>([]);
 
-  // On refresh, store resets naturally (useState defaults).
-  // Local state (priceRange, selectedCategories) also resets on mount.
+  // Usa maxPrice como valor inicial do slider assim que os dados chegam
+  const effectivePriceMax = priceMax ?? maxPrice;
 
   const handleCategoryToggle = (cat: Category) => {
     setSelectedCategories((prev) =>
-      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
+      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat],
     );
   };
 
   const filtered = useMemo(() => {
     let result = gifts;
 
-    // Apply category from header overlay
     if (selectedCategory) {
       result = result.filter((g) => g.category === selectedCategory);
     }
 
-    // Apply checkbox categories (only when no overlay category is active)
     if (!selectedCategory && selectedCategories.length > 0) {
       result = result.filter((g) => selectedCategories.includes(g.category));
     }
 
-    // Apply price max (min is fixed at 0)
-    result = result.filter((g) => g.price <= priceMax);
+    result = result.filter((g) => g.price <= effectivePriceMax);
 
     return result;
-  }, [gifts, selectedCategory, selectedCategories, priceMax]);
+  }, [gifts, selectedCategory, selectedCategories, effectivePriceMax]);
 
+  // ── Estados de carregamento e erro ───────────────────────────────────────
+  if (loading) {
+    return (
+      <main className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <p className="font-body text-sm text-muted-foreground">
+            Carregando presentes...
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  if (error) {
+    return (
+      <main className="min-h-screen flex items-center justify-center px-8">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <p className="font-display text-2xl text-destructive">
+            Ops, algo deu errado.
+          </p>
+          <p className="font-body text-sm text-muted-foreground">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="font-body text-sm border border-foreground px-8 py-3 hover:bg-foreground hover:text-background transition-all duration-500"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  // ── Render principal ──────────────────────────────────────────────────────
   return (
     <main className="min-h-screen pt-28 pb-20 px-8 md:px-16 lg:px-24">
       <div className="max-w-7xl mx-auto">
@@ -53,16 +92,19 @@ const Index = () => {
             Lista de Presentes
           </h1>
           {selectedCategory && (
-            <p className="font-display text-xl text-muted-foreground">{selectedCategory}</p>
+            <p className="font-display text-xl text-muted-foreground">
+              {selectedCategory}
+            </p>
           )}
         </motion.div>
 
         <div className="flex flex-col md:flex-row gap-12">
-          {/* Sidebar Filters */}
+          {/* Sidebar */}
           <div className="w-full md:w-64 shrink-0">
             <GiftFilters
-              priceMax={priceMax}
-              maxPrice={MAX_PRICE}
+              categories={categories}
+              priceMax={effectivePriceMax}
+              maxPrice={maxPrice}
               onPriceChange={setPriceMax}
               selectedCategories={selectedCategories}
               onCategoryToggle={handleCategoryToggle}
@@ -70,7 +112,7 @@ const Index = () => {
             />
           </div>
 
-          {/* Gift Grid */}
+          {/* Grid */}
           <div className="flex-1">
             {filtered.length === 0 ? (
               <motion.p
