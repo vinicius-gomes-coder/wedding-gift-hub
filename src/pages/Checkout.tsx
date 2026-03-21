@@ -692,7 +692,7 @@ export default function Checkout() {
                 pelo Mercado Pago.
               </p>
 
-              <Wallet initialization={{ preferenceId }} />
+              <Wallet initialization={{ preferenceId, redirectMode: "self" }} />
 
               <button
                 onClick={handleBack}
