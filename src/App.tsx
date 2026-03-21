@@ -7,6 +7,7 @@ import CategoryOverlay from "@/components/CategoryOverlay";
 import Index from "./pages/Index";
 import Cart from "./pages/Cart";
 import Checkout from "./pages/Checkout";
+import CustomPix from "./pages/CustomPix";
 import PaymentSuccess from "./pages/PaymentSuccess";
 import PaymentFailure from "./pages/PaymentFailure";
 import PaymentPending from "./pages/PaymentPending";
@@ -23,6 +24,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/carrinho" element={<Cart />} />
           <Route path="/checkout" element={<Checkout />} />
+          <Route path="/contribuicao" element={<CustomPix />} />
 
           {/* Rotas de retorno do Checkout Pro */}
           <Route path="/pagamento/sucesso" element={<PaymentSuccess />} />

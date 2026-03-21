@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { MercadoPagoConfig, Preference, Payment } from "mercadopago";
-import { sendPurchaseEmails } from "../services/email.js";
+import { sendPurchaseEmails, sendCustomPixEmails } from "../services/email.js";
 
 const router = Router();
 
@@ -182,6 +182,30 @@ router.post("/notify", async (req, res) => {
     // Loga o erro mas não falha a experiência do usuário —
     // o pagamento já foi confirmado, o e-mail é secundário.
     console.error("Erro ao enviar e-mails:", err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+
+// ─── POST /api/payments/notify-custom ────────────────────────────────────────
+// Chamado após confirmação de contribuição livre (PIX de valor avulso).
+router.post("/notify-custom", async (req, res) => {
+  try {
+    const { buyer, amount } = req.body;
+
+    if (!buyer?.name || !buyer?.email) {
+      return res.status(400).json({ error: "Nome e e-mail do comprador são obrigatórios" });
+    }
+
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+      return res.status(400).json({ error: "Valor inválido" });
+    }
+
+    await sendCustomPixEmails({ buyer, amount: Number(amount) });
+
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    console.error("Erro ao enviar e-mails de contribuição:", err.message);
     return res.status(500).json({ error: err.message });
   }
 });

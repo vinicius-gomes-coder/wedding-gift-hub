@@ -265,3 +265,133 @@ export async function sendPurchaseEmails({ buyer, items, total, paymentMethod })
 
   console.log(`✅  E-mails enviados → noivos (${coupleEmail}) e comprador (${buyer.email})`);
 }
+
+// ─── Template: e-mail para os noivos (contribuição livre) ─────────────────────
+function buildCoupleCustomEmail({ buyer, amount }) {
+  return {
+    subject: `💝 ${buyer.name} enviou uma contribuição!`,
+    html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="margin:0; padding:0; background:#f4f4f2;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f2; padding:40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff; max-width:560px; width:100%;">
+          <tr>
+            <td style="background:#7d8a68; padding:36px 40px; text-align:center;">
+              <p style="margin:0 0 6px 0; font-family:'Georgia',serif; font-size:13px; color:#d4c9a8; letter-spacing:3px; text-transform:uppercase;">Lista de Presentes</p>
+              <h1 style="margin:0; font-family:'Georgia',serif; font-size:28px; font-weight:400; color:#ffffff;">Eduarda &amp; Vinicius</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:40px 40px 24px 40px;">
+              <p style="margin:0 0 24px 0; font-family:'Georgia',serif; font-size:20px; color:#3d3d3d;">
+                Vocês receberam uma contribuição! 🎁
+              </p>
+              <p style="margin:0 0 8px 0; font-family:Arial,sans-serif; font-size:14px; color:#666; line-height:1.6;">
+                <strong style="color:#3d3d3d;">${buyer.name}</strong> enviou uma contribuição especial.
+              </p>
+              <p style="margin:0 0 32px 0; font-family:Arial,sans-serif; font-size:14px; color:#666;">
+                Contato: <a href="mailto:${buyer.email}" style="color:#7d8a68;">${buyer.email}</a>
+              </p>
+
+              ${buyer.message ? `
+              <div style="background:#f9f8f5; border-left:3px solid #b89b5d; padding:20px 24px; margin-bottom:32px;">
+                <p style="margin:0 0 8px 0; font-family:Arial,sans-serif; font-size:11px; color:#999; letter-spacing:2px; text-transform:uppercase;">Mensagem</p>
+                <p style="margin:0; font-family:'Georgia',serif; font-size:16px; color:#3d3d3d; font-style:italic; line-height:1.7;">"${buyer.message}"</p>
+              </div>` : ""}
+
+              <div style="background:#f9f8f5; padding:24px; text-align:center;">
+                <p style="margin:0 0 6px 0; font-family:Arial,sans-serif; font-size:11px; color:#999; letter-spacing:2px; text-transform:uppercase;">Valor enviado</p>
+                <p style="margin:0; font-family:'Georgia',serif; font-size:32px; color:#3d3d3d;">R$ ${Number(amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</p>
+                <p style="margin:8px 0 0 0; font-family:Arial,sans-serif; font-size:12px; color:#999;">via PIX</p>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 40px; border-top:1px solid #e8e6e0; text-align:center;">
+              <p style="margin:0; font-family:Arial,sans-serif; font-size:12px; color:#999;">Lista de Presentes — Eduarda &amp; Vinicius</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`,
+  };
+}
+
+// ─── Template: e-mail para o comprador (contribuição livre) ───────────────────
+function buildBuyerCustomEmail({ buyer, amount }) {
+  return {
+    subject: "Sua contribuição foi confirmada ✨",
+    html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="margin:0; padding:0; background:#f4f4f2;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f2; padding:40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff; max-width:560px; width:100%;">
+          <tr>
+            <td style="background:#7d8a68; padding:36px 40px; text-align:center;">
+              <p style="margin:0 0 6px 0; font-family:'Georgia',serif; font-size:13px; color:#d4c9a8; letter-spacing:3px; text-transform:uppercase;">Lista de Presentes</p>
+              <h1 style="margin:0; font-family:'Georgia',serif; font-size:28px; font-weight:400; color:#ffffff;">Eduarda &amp; Vinicius</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:40px 40px 24px 40px;">
+              <p style="margin:0 0 16px 0; font-family:'Georgia',serif; font-size:20px; color:#3d3d3d;">Obrigado, ${buyer.name}!</p>
+              <p style="margin:0 0 32px 0; font-family:Arial,sans-serif; font-size:14px; color:#666; line-height:1.7;">
+                Sua contribuição foi confirmada com sucesso. Eduarda e Vinicius vão adorar!
+              </p>
+
+              <div style="background:#f9f8f5; padding:24px; text-align:center; margin-bottom:32px;">
+                <p style="margin:0 0 6px 0; font-family:Arial,sans-serif; font-size:11px; color:#999; letter-spacing:2px; text-transform:uppercase;">Valor enviado</p>
+                <p style="margin:0; font-family:'Georgia',serif; font-size:32px; color:#3d3d3d;">R$ ${Number(amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</p>
+                <p style="margin:8px 0 0 0; font-family:Arial,sans-serif; font-size:12px; color:#999;">via PIX</p>
+              </div>
+
+              ${buyer.message ? `
+              <div style="background:#f9f8f5; border-left:3px solid #b89b5d; padding:20px 24px;">
+                <p style="margin:0 0 8px 0; font-family:Arial,sans-serif; font-size:11px; color:#999; letter-spacing:2px; text-transform:uppercase;">Sua mensagem</p>
+                <p style="margin:0; font-family:'Georgia',serif; font-size:16px; color:#3d3d3d; font-style:italic; line-height:1.7;">"${buyer.message}"</p>
+              </div>` : ""}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 40px; border-top:1px solid #e8e6e0; text-align:center;">
+              <p style="margin:0; font-family:Arial,sans-serif; font-size:12px; color:#999;">Lista de Presentes — Eduarda &amp; Vinicius</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`,
+  };
+}
+
+// ─── Enviar e-mails de contribuição livre ─────────────────────────────────────
+export async function sendCustomPixEmails({ buyer, amount }) {
+  const transporter = createTransporter();
+  const fromAddress = process.env.EMAIL_FROM || process.env.EMAIL_USER;
+  const coupleEmail = process.env.COUPLE_EMAIL;
+
+  if (!coupleEmail) throw new Error("COUPLE_EMAIL não configurado no .env");
+
+  const coupleTemplate = buildCoupleCustomEmail({ buyer, amount });
+  const buyerTemplate  = buildBuyerCustomEmail({ buyer, amount });
+
+  await Promise.all([
+    transporter.sendMail({ from: fromAddress, to: coupleEmail, subject: coupleTemplate.subject, html: coupleTemplate.html }),
+    transporter.sendMail({ from: fromAddress, to: buyer.email, subject: buyerTemplate.subject, html: buyerTemplate.html }),
+  ]);
+
+  console.log(`✅  E-mails de contribuição enviados → noivos (${coupleEmail}) e comprador (${buyer.email})`);
+}
